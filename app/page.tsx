@@ -1,65 +1,140 @@
-import Image from "next/image";
+"use client";
 
-export default function Home() {
-  return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import { useSession } from "next-auth/react";
+import { useAuth } from "@/hooks/useAuth";
+import { useCart } from "@/hooks/useCart";
+import { getProducts } from "@/services/api";
+import { ProductList } from "@/components/ProductList";
+import { convertToINR } from "@/utils/currency";
+
+type Product = {
+  id: number;
+  title: string;
+  price: number;
+  thumbnail: string;
+};
+
+export default function HomePage() {
+  const router = useRouter();
+  const { user } = useAuth();
+  const { data: session, status } = useSession();
+  const { cart, removeFromCart } = useCart();
+  const [mounted, setMounted] = useState(false);
+  const [products, setProducts] = useState<Product[]>([]);
+  const [loading, setLoading] = useState(true);
+  const activeEmail = session?.user?.email || user?.email || null;
+
+  useEffect(() => {
+    setMounted(true);
+
+    if (status === "loading") {
+      return;
+    }
+
+    if (!activeEmail) {
+      router.replace("/login");
+      return;
+    }
+
+    let isActive = true;
+
+    const fetchProducts = async () => {
+      try {
+        const data = await getProducts();
+
+        if (isActive) {
+          setProducts(data);
+        }
+      } catch (error) {
+        console.error("Failed to fetch products:", error);
+      } finally {
+        if (isActive) {
+          setLoading(false);
+        }
+      }
+    };
+
+    fetchProducts();
+
+    return () => {
+      isActive = false;
+    };
+  }, [activeEmail, status, router]);
+
+  if (!mounted) {
+    return null;
+  }
+
+  if (status === "loading") {
+    return null;
+  }
+
+  if (!activeEmail) {
+    return null;
+  }
+
+  if (loading) {
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-zinc-50 px-4">
+        <p className="rounded-full border border-zinc-200 bg-white px-4 py-2 text-sm font-medium text-zinc-700 shadow-sm">
+          Loading products...
+        </p>
       </main>
-    </div>
+    );
+  }
+
+  return (
+    <main className="min-h-screen bg-gradient-to-b from-zinc-50 to-zinc-100/60 px-4 py-10 sm:py-12">
+      <div className="mx-auto w-full max-w-7xl space-y-8">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight text-zinc-900 sm:text-4xl">
+            All Products
+          </h1>
+          <p className="mt-2 text-sm text-zinc-500 sm:text-base">
+            Browse our latest collection and find what suits you best
+          </p>
+          <div className="mt-5 h-px w-full bg-zinc-200" />
+        </div>
+
+        <ProductList products={products} />
+
+        <section className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm sm:p-6">
+          <h2 className="text-xl font-semibold text-zinc-900">Cart Items</h2>
+
+          {cart.length === 0 ? (
+            <p className="mt-3 text-sm text-zinc-600 sm:text-base">
+              Your cart is empty.
+            </p>
+          ) : (
+            <ul className="mt-4 space-y-3">
+              {cart.map((item, index) => (
+                <li
+                  key={`${item.id}-${index}`}
+                  className="flex items-center justify-between rounded-lg border border-zinc-200 px-4 py-3 transition-all duration-200 hover:shadow-sm"
+                >
+                  <div>
+                    <p className="font-medium text-zinc-900">{item.title}</p>
+                    <p className="text-sm text-zinc-600">
+                      {convertToINR(item.price)}
+                    </p>
+                    <p className="text-sm text-zinc-600">Qty: {item.quantity}</p>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => removeFromCart(item.id)}
+                    className="rounded-md bg-red-600 px-3 py-1.5 text-sm font-medium text-white transition-all duration-200 hover:bg-red-500 active:scale-95"
+                  >
+                    Remove
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+      </div>
+    </main>
   );
 }
